@@ -44,7 +44,6 @@ Before running the script, ensure the following are set up:
 |------|-------------|
 | `deploy_vm.sh` | Bash script to deploy the VM and firewall rules |
 | `README.md` | This file |
-| (Optional) `screenshots/` | Folder containing images for documentation |
 
 --
 
