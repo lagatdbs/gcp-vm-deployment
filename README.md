@@ -51,40 +51,60 @@ Before running the script, ensure the following are set up:
 
 1. **Clone the Repository**:
 
-```bash
-# Check if required tools are installed
-if ! command -v git &> /dev/null || ! command -v gcloud &> /dev/null; then
-  echo "Error: Required tools (git, gcloud) are not installed."
-  exit 1
-fi
+#!/bin/bash
 
-# Initialize a new Git repository
-git init
+set -e  # Exit on error
 
-# Add the remote repository
-git remote add origin https://github.com/lagatdbs/gcp-vm-deployment.git
+# Variables
+VM_NAME="my-vm-project-two"
+ZONE="us-central1-a"
+REGION="us-central1"
+MACHINE_TYPE="n2-standard-2"
+BOOT_DISK_SIZE="250GB"
+IMAGE_FAMILY="ubuntu-2004-lts"
+IMAGE_PROJECT="ubuntu-os-cloud"
+TAG="http-server"
 
-# Add the deployment script to staging
-git add deploy_vm.sh
+# Clean up existing resources if any
+echo " Cleaning up existing resources if any..."
+gcloud compute addresses delete ${VM_NAME}-ip --region=$REGION --quiet || true
+gcloud compute instances delete $VM_NAME --zone=$ZONE --quiet || true
+gcloud compute firewall-rules delete ${VM_NAME}-allow-http-ssh --quiet || true
 
-# Commit the changes with a message
-git commit -m "Add deployment script"
+# Reserve a static IP
+echo " Reserving a static IP address..."
+gcloud compute addresses create ${VM_NAME}-ip --region=$REGION
 
-# Rename the branch to match the remote default branch
-git branch -M main
+# Create VM instance
+echo " Creating the VM instance..."
+gcloud compute instances create $VM_NAME \
+  --zone=$ZONE \
+  --machine-type=$MACHINE_TYPE \
+  --image-family=$IMAGE_FAMILY \
+  --image-project=$IMAGE_PROJECT \
+  --boot-disk-size=$BOOT_DISK_SIZE \
+  --tags=$TAG \
+  --address=${VM_NAME}-ip
 
-# Push the changes to the remote repository
-git push -u origin main
+# Set up firewall rules for HTTP and SSH access
+echo " Creating firewall rules for HTTP and SSH access..."
+gcloud compute firewall-rules create ${VM_NAME}-allow-http-ssh \
+  --allow tcp:80,tcp:22 \
+  --target-tags=$TAG \
+  --description="Allow HTTP and SSH traffic"
 
-chmod +x deploy_vm.sh
-./deploy_vm.sh
+# Install Apache if not already installed
+echo " Installing Apache if not already installed..."
+sudo apt update -y apache
+sudo apt install -y apache2
 
-# Wait for the VM to be ready
-echo "Waiting for VM to be ready..."
-sleep 30
+# Start Apache service and enable it to start on boot
+echo " Starting Apache service..."
+sudo systemctl start apache2
+sudo systemctl enable apache2
 
-gcloud compute ssh gcp-demo-vm --zone=us-central1-a
+# Fetch the external IP of the VM
+EXTERNAL_IP=$(gcloud compute instances describe $VM_NAME --zone=$ZONE --format='get(networkInterfaces[0].accessConfigs[0].natIP)')
 
-# Replace <STATIC_IP> with the actual static IP of the VM
-STATIC_IP="192.168.1.100" # Replace with the actual static IP
-echo "Access your application at: http://$STATIC_IP"
+# Output the external IP address
+echo " VM is successfully deployed. Access your VM at: http://$EXTERNAL_IP"
